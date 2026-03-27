@@ -1,4 +1,11 @@
-import { PayPalClient } from "./paypal-client";
+import type { Client } from "@paypal/paypal-server-sdk";
+import { Environment } from "@paypal/paypal-server-sdk";
+import { PayPalHttpClient } from "./paypal-client";
+import {
+  billingPlanToPublic,
+  createPlanPayloadToPlanRequest,
+  planCollectionToPublic,
+} from "./paypal-mappers";
 import {
   CreatePlanPayload,
   CreateSubscriptionPayload,
@@ -13,11 +20,39 @@ import {
   VerifyWebhookSignaturePayload,
 } from "./types";
 
-export class PayPal {
-  private client: PayPalClient;
+export type PayPalConstructorOptions = {
+  environment?: Environment;
+};
 
-  constructor(clientId: string, clientSecret: string) {
-    this.client = new PayPalClient(clientId, clientSecret);
+function formatError(err: unknown): string {
+  if (err instanceof Error) {
+    const withResult = err as Error & {
+      result?: { message?: string; details?: unknown };
+    };
+    if (withResult.result && typeof withResult.result === "object") {
+      const m = withResult.result.message;
+      if (typeof m === "string" && m.length > 0) {
+        return m;
+      }
+    }
+    return err.message;
+  }
+  return String(err);
+}
+
+export class PayPal {
+  private client: PayPalHttpClient;
+
+  constructor(
+    clientId: string,
+    clientSecret: string,
+    options?: PayPalConstructorOptions,
+  ) {
+    this.client = new PayPalHttpClient(
+      clientId,
+      clientSecret,
+      options?.environment ?? Environment.Sandbox,
+    );
   }
 
   async request<TResponse, TPayload = undefined>(
@@ -25,45 +60,67 @@ export class PayPal {
     path: string,
     data?: TPayload,
   ): Promise<TResponse> {
-    const token = await this.client.getAuthToken();
     try {
-      const response = await this.client.getClient().request<TResponse>({
+      return await this.client.jsonRequest<TResponse>(
         method,
-        url: path,
-        data,
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      return response.data as TResponse;
+        path,
+        data as unknown,
+      );
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to request ${method} ${path}: ${message}`);
+      throw new Error(
+        `Failed to request ${method} ${path}: ${formatError(error)}`,
+      );
     }
   }
 
   async createBillingPlan(planData: CreatePlanPayload): Promise<PayPalPlanResponse> {
-    return this.request<PayPalPlanResponse, CreatePlanPayload>(
-      "POST",
-      "/v1/billing/plans",
-      planData,
-    );
+    const subs = this.client.getSubscriptionsController();
+    try {
+      const response = await subs.createBillingPlan({
+        body: createPlanPayloadToPlanRequest(planData),
+      });
+      return billingPlanToPublic(response.result);
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/billing/plans: ${formatError(error)}`,
+      );
+    }
   }
 
   async getBillingPlans(): Promise<PayPalPlansListResponse> {
-    return this.request<PayPalPlansListResponse>("GET", "/v1/billing/plans");
+    const subs = this.client.getSubscriptionsController();
+    try {
+      const response = await subs.listBillingPlans({});
+      return planCollectionToPublic(response.result);
+    } catch (error) {
+      throw new Error(
+        `Failed to request GET /v1/billing/plans: ${formatError(error)}`,
+      );
+    }
   }
 
   async getBillingPlan(planId: string): Promise<PayPalPlanResponse> {
-    return this.request<PayPalPlanResponse>("GET", `/v1/billing/plans/${planId}`);
+    const subs = this.client.getSubscriptionsController();
+    try {
+      const response = await subs.getBillingPlan(planId);
+      return billingPlanToPublic(response.result);
+    } catch (error) {
+      throw new Error(
+        `Failed to request GET /v1/billing/plans/${planId}: ${formatError(error)}`,
+      );
+    }
   }
 
   async deactivateBillingPlan(planId: string): Promise<Record<string, never>> {
-    return this.request<Record<string, never>, Record<string, never>>(
-      "POST",
-      `/v1/billing/plans/${planId}/deactivate`,
-      {},
-    );
+    const subs = this.client.getSubscriptionsController();
+    try {
+      await subs.deactivateBillingPlan(planId);
+      return {};
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/billing/plans/${planId}/deactivate: ${formatError(error)}`,
+      );
+    }
   }
 
   async createSubscription(
@@ -88,29 +145,47 @@ export class PayPal {
         ...(subscriptionData.application_context || {}),
       },
     };
-    return this.request<PayPalSubscriptionResponse, CreateSubscriptionPayload>(
-      "POST",
-      "/v1/billing/subscriptions",
-      payload,
-    );
+    try {
+      return await this.client.jsonRequest<PayPalSubscriptionResponse>(
+        "POST",
+        "/v1/billing/subscriptions",
+        payload,
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/billing/subscriptions: ${formatError(error)}`,
+      );
+    }
   }
 
   async getSubscription(subscriptionId: string): Promise<PayPalSubscriptionResponse> {
-    return this.request<PayPalSubscriptionResponse>(
-      "GET",
-      `/v1/billing/subscriptions/${subscriptionId}`,
-    );
+    try {
+      return await this.client.jsonRequest<PayPalSubscriptionResponse>(
+        "GET",
+        `/v1/billing/subscriptions/${subscriptionId}`,
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to request GET /v1/billing/subscriptions/${subscriptionId}: ${formatError(error)}`,
+      );
+    }
   }
 
   async cancelSubscription(
     subscriptionId: string,
     reason = "Canceled by user",
   ): Promise<PayPalSubscriptionResponse> {
-    await this.request<Record<string, never>, { reason: string }>(
-      "POST",
-      `/v1/billing/subscriptions/${subscriptionId}/cancel`,
-      { reason },
-    );
+    const subs = this.client.getSubscriptionsController();
+    try {
+      await subs.cancelSubscription({
+        id: subscriptionId,
+        body: { reason },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/billing/subscriptions/${subscriptionId}/cancel: ${formatError(error)}`,
+      );
+    }
     return this.getSubscription(subscriptionId);
   }
 
@@ -118,11 +193,17 @@ export class PayPal {
     subscriptionId: string,
     reason = "Reactivated by user",
   ): Promise<PayPalSubscriptionResponse> {
-    await this.request<Record<string, never>, { reason: string }>(
-      "POST",
-      `/v1/billing/subscriptions/${subscriptionId}/activate`,
-      { reason },
-    );
+    const subs = this.client.getSubscriptionsController();
+    try {
+      await subs.activateSubscription({
+        id: subscriptionId,
+        body: { reason },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/billing/subscriptions/${subscriptionId}/activate: ${formatError(error)}`,
+      );
+    }
     return this.getSubscription(subscriptionId);
   }
 
@@ -130,37 +211,51 @@ export class PayPal {
     subscriptionId: string,
     planId: string,
   ): Promise<PayPalSubscriptionResponse> {
-    await this.request<Record<string, never>, { plan_id: string }>(
-      "POST",
-      `/v1/billing/subscriptions/${subscriptionId}/revise`,
-      { plan_id: planId },
-    );
+    const subs = this.client.getSubscriptionsController();
+    try {
+      await subs.reviseSubscription({
+        id: subscriptionId,
+        body: { planId },
+      });
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/billing/subscriptions/${subscriptionId}/revise: ${formatError(error)}`,
+      );
+    }
     return this.getSubscription(subscriptionId);
   }
 
   async verifyWebhookSignature(
     payload: VerifyWebhookSignaturePayload,
   ): Promise<VerifyWebhookSignatureResponse> {
-    return this.request<
-      VerifyWebhookSignatureResponse,
-      VerifyWebhookSignaturePayload
-    >(
-      "POST",
-      "/v1/notifications/verify-webhook-signature",
-      payload,
-    );
+    try {
+      return await this.client.jsonRequest<VerifyWebhookSignatureResponse>(
+        "POST",
+        "/v1/notifications/verify-webhook-signature",
+        payload,
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/notifications/verify-webhook-signature: ${formatError(error)}`,
+      );
+    }
   }
 
   async createProduct(productData: ProductPayload): Promise<PayPalProductResponse> {
-    return this.request<PayPalProductResponse, ProductPayload>(
-      "POST",
-      "/v1/catalogs/products",
-      productData,
-    );
+    try {
+      return await this.client.jsonRequest<PayPalProductResponse>(
+        "POST",
+        "/v1/catalogs/products",
+        productData,
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to request POST /v1/catalogs/products: ${formatError(error)}`,
+      );
+    }
   }
 
-  get Client() {
-    return this.client.getClient();
+  get Client(): Client {
+    return this.client.getSdkClient();
   }
 }
-

@@ -2,6 +2,8 @@
 
 Typed TypeScript SDK for PayPal Billing APIs used by Playflix.
 
+It builds on PayPal’s official [`@paypal/paypal-server-sdk`](https://www.npmjs.com/package/@paypal/paypal-server-sdk) for OAuth and billing plans, and keeps the same public types and method names as before.
+
 This package wraps common PayPal operations for:
 
 - products
@@ -21,23 +23,24 @@ npm install @playflixtv/paypal-sdk
 
 ## Requirements
 
-- Node.js runtime
+- Node.js **18+** (uses the global `fetch` API)
 - PayPal REST credentials:
   - `PAYPAL_CLIENT_ID`
   - `PAYPAL_CLIENT_SECRET`
 
-By default, the SDK client points to PayPal Sandbox (`https://api-m.sandbox.paypal.com`).
+By default, the client uses PayPal Sandbox (`https://api-m.sandbox.paypal.com`). Pass `{ environment: PayPalEnvironment.Production }` for live.
 
 ---
 
 ## Quick start
 
 ```ts
-import { PayPal } from "@playflixtv/paypal-sdk";
+import { PayPal, PayPalEnvironment } from "@playflixtv/paypal-sdk";
 
 const paypal = new PayPal(
   process.env.PAYPAL_CLIENT_ID!,
   process.env.PAYPAL_CLIENT_SECRET!,
+  // { environment: PayPalEnvironment.Production },
 );
 ```
 
@@ -64,13 +67,21 @@ import {
 
 ## API reference
 
-## `new PayPal(clientId, clientSecret)`
+## `new PayPal(clientId, clientSecret, options?)`
 
-Creates a PayPal API client.
+Creates a PayPal API client (backed by `@paypal/paypal-server-sdk`).
 
 ```ts
 const paypal = new PayPal(clientId, clientSecret);
+// Live:
+// const paypal = new PayPal(clientId, clientSecret, {
+//   environment: PayPalEnvironment.Production,
+// });
 ```
+
+## `paypal.Client`
+
+Read-only access to the underlying PayPal [`Client`](https://github.com/paypal/PayPal-TypeScript-Server-SDK) from `@paypal/paypal-server-sdk` (OAuth, environment, advanced configuration).
 
 ## `request<TResponse, TPayload>(method, path, data?)`
 
@@ -302,5 +313,6 @@ npm run build
 
 - Keep credentials server-side only.
 - This SDK uses sandbox API base URL by default.
+- Catalog products and webhook verification use the same OAuth token as the official SDK (the PayPal TypeScript server SDK does not yet expose controllers for those APIs).
 - For unsupported endpoints, prefer `request<TResponse, TPayload>()` and contribute a typed wrapper method back to the SDK.
 

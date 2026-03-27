@@ -30,7 +30,10 @@
     "typecheck": "tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
-    "axios": "^1.12.1"
+    "@paypal/paypal-server-sdk": "^2.2.0"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
