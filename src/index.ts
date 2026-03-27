@@ -3,5 +3,6 @@ export {
   CreatePlanPayload,
   CreateSubscriptionPayload,
   ProductPayload,
+  VerifyWebhookSignaturePayload,
 } from "./types";
 
