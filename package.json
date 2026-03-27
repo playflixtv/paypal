@@ -1,0 +1,38 @@
+{
+  "name": "@playflixtv/paypal-sdk",
+  "version": "0.0.1",
+  "description": "PayPal SDK for PlayflixTV",
+  "author": "PlayflixTV",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/playflixtv/paypal"
+  },
+  "homepage": "https://github.com/playflixtv/paypal",
+  "bugs": {
+    "url": "https://github.com/playflixtv/paypal/issues"
+  },
+  "keywords": [
+    "paypal",
+    "sdk",
+    "playflixtv"
+  ],
+  "private": false,
+  "license": "MIT",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.12.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.3"
+  }
+}
