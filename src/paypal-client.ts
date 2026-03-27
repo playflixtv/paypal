@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from "axios";
+import { PayPalOAuthTokenResponse } from "./types";
 
 export class PayPalClient {
   private client: AxiosInstance;
@@ -22,7 +23,7 @@ export class PayPalClient {
       "base64",
     );
     try {
-      const response = await this.client.post(
+      const response = await this.client.post<PayPalOAuthTokenResponse>(
         `/v1/oauth2/token`,
         "grant_type=client_credentials",
         {
@@ -39,7 +40,7 @@ export class PayPalClient {
     }
   }
 
-  getClient() {
+  getClient(): AxiosInstance {
     return this.client;
   }
 }
